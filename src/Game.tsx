@@ -43,6 +43,9 @@ export const Game = types.model("Game", {
         if (self.drawnCard != undefined) return;
         self.drawnCard = newCard;
     },
+    discardDrawnCard() {
+        self.drawnCard = undefined;
+    },
     giveCard(playerIndex: number) {
         if (self.drawnCard == undefined) return;
         self.players[playerIndex].addCard(self.drawnCard);

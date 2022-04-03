@@ -1,7 +1,7 @@
 import React from 'react';
 import * as Game from './Game';
 import './App.css';
-import { onSnapshot } from "mobx-state-tree";
+import { onSnapshot, applySnapshot, onPatch, applyPatch } from "mobx-state-tree";
 import { observer } from "mobx-react-lite";
 import { cards } from './Cards';
 
@@ -31,8 +31,33 @@ const Card: React.FC<{value: number}> = ({value}) => {
 const Cards: React.FC<{coords: (readonly [number, number])[], onClick: () => void}> =
 ({coords, onClick}) => {
     const w = 100;
+    const minDist = 20;
+    const outputs = [];
+    const distsq = (i: number, j: number) => {
+        const [x1, y1] = coords[i];
+        const [x2, y2] = coords[j];
+        const dx = x1 - x2;
+        const dy = y1 - y2;
+        return dx * dx + dy * dy;
+    };
+    const direction = (i: number, j: number) => {
+        const [x1, y1] = coords[i];
+        const [x2, y2] = coords[j];
+        const dx = x1 - x2;
+        const dy = y1 - y2;
+        return Math.atan2(dy, dx) * (180 / Math.PI) + 90;
+    }
+    let prevDirection = 0;
+    for (let i = 0; i < coords.length;) {
+        let j = i + 1;
+        while (j < coords.length && distsq(i, j) < minDist*minDist) ++j;
+        const dir = j == coords.length ? prevDirection : direction(i, j);
+        outputs.push({pos: coords[i], dir});
+        i = j;
+        prevDirection = dir;
+    }
     return <>
-        {coords.map(([x, y], i) =>
+        {outputs.map(({pos: [x, y], dir}, i) =>
         <div style={{
             position: "absolute",
             left: `${x-w/2}px`,
@@ -40,6 +65,7 @@ const Cards: React.FC<{coords: (readonly [number, number])[], onClick: () => voi
             display: "flex",
             width: `${w}px`,
             height: `${w*1.5}px`,
+            rotate: `${dir}deg`,
         }} onClick={onClick} key={i}>
             {cards[55]}
         </div>)}
@@ -99,7 +125,6 @@ const useMouseMove = (pos: readonly [number, number], setPos: (p: readonly [numb
         if (touch == null) return;
         const touches = ev.changedTouches;
         for (let i = 0; i < touches.length; ++i) {
-            console.log({ident: touches[i].identifier, touch});
             if (touches[i].identifier === touch) {
                 setS(null);
                 setD([0, 0]);
@@ -123,6 +148,18 @@ const DirtyInput: React.FC<{value: string, onChange: (v: string) => void}> = ({v
         onChange={(e) => setDirtyValue(e.target.value === value ? null : e.target.value)}
         onBlur={() => {if (dirtyValue != null) { onChange(dirtyValue); setDirtyValue(null); }}}
         />;
+};
+
+const describeSum = (cardIndexes: number[]) => {
+    const cardValues = cardIndexes.map((c) => (c % 13) + 1);
+    const aces = cardValues.filter((c) => c === 1).length;
+    const sum = cardValues.reduce((a, b) => a + b, 0);
+    let s = `${sum}`;
+    for (let i = 1; i <= aces; ++i) {
+        s = `${s} or ${sum + i * 13}`;
+    }
+    return s;
+    // return JSON.stringify({s, aces, cardValues});
 };
 
 const Player: React.FC<{
@@ -156,15 +193,17 @@ const Player: React.FC<{
             flexDirection: "column",
             border: "1px solid black",
             background: "white",
+            width: "250px",
         }}
         ref={(d) => {divRef.current = d;}}
         onMouseDown={onClick == null ? (e) => onMouseDown(e.nativeEvent) : undefined}
         onClick={onClick == null ? undefined : () => onClick(index)}
     >
         <DirtyInput value={player.name} onChange={(s) => {console.log({s});player.setName(s)}} />
-        <div style={{display: "flex"}}>
-            {player.cards.length === 0 ? <div style={{margin: "5px"}}>No cards</div> : player.cards.map(
-                (c, i) => <div key={i} style={{margin: "5px", width: "40px"}}>{cards[c]}</div>
+        <div style={{margin: "5px", textAlign: 'center'}}>{player.cards.length === 0 ? "No cards" : `Σ = ${describeSum([...player.cards])}`}</div>
+        <div style={{display: "flex", alignSelf: 'center', flexWrap: 'wrap'}}>
+            {player.cards.map(
+                (c, i) => <div key={i} style={{margin: "5px", width: "40px"}} title={`${c}`}>{cards[c]}</div>
             )}
         </div>
         <button disabled={onClick != null} onClick={() => confirm ? player.hide() : setConfirm(true)}>{confirm ? "Really DNF?" : "DNF"}</button>
@@ -175,12 +214,57 @@ const Player: React.FC<{
 const Players: React.FC<{
     onClick?: (i: number) => void,
 }> = observer((props) => {
-    console.log("Hello I am observer Players");
     const players = Game.useMst().game.players;
     return <>
         {players.map((p, i) => p.hidden ? null : <Player key={i} value={p} index={i} {...props} />)}
     </>;
 });
+
+const UndoRedo: React.FC<{}> = (_props) => {
+    const root = Game.useMst();
+    const [undotree, setUndotree] = React.useState<any>(null);
+    const applying = React.useRef(false);
+    React.useEffect(
+        () => onPatch(root, (patch, reversePatch) => {
+            if (applying.current) {
+                return;
+            }
+            setUndotree((undo) =>
+                ({patch, reversePatch, undo, redo: []}));
+        }), [],
+    );
+    const undo = React.useCallback(() => {
+        setUndotree((current) => {
+            if (current == null) {
+                return null;
+            }
+            const {reversePatch, undo} = current;
+            applying.current = true;
+            applyPatch(root, reversePatch);
+            applying.current = false;
+            return {...undo, redo: [...undo.redo, current]};
+        })
+    }, []);
+    const redo = React.useCallback(() => {
+        setUndotree((current) => {
+            if (current == null) {
+                return null;
+            }
+            const {redo} = current;
+            if (redo.length === 0) {
+                return current;
+            }
+            applying.current = true;
+            applyPatch(root, redo[redo.length - 1].patch);
+            applying.current = false;
+            return {...redo[redo.length - 1], undo: current};
+        })
+    }, []);
+    return <>
+        {/* <div><button onClick={undo}>Undo</button></div>
+        <div><button onClick={redo}>Redo</button></div> */}
+    </>
+};
 
 const GameApp: React.FC<{}> = observer((_props) => {
     const game = Game.useMst().game;
@@ -223,7 +307,7 @@ const GameApp: React.FC<{}> = observer((_props) => {
             ev.preventDefault();
             ev.stopPropagation();
         }
-    }, [mode]));
+    }, [mode]), {passive: false});
     useWindowEventListener("touchmove", React.useCallback((ev: TouchEvent) => {
         if (mode === "dragging" && draggingTouch != null) {
             const touches = ev.changedTouches;
@@ -236,7 +320,7 @@ const GameApp: React.FC<{}> = observer((_props) => {
                 }
             }
         }
-    }, [mode, draggingTouch]));
+    }, [mode, draggingTouch]), {passive: false});
     useWindowEventListener("touchend", React.useCallback((ev: TouchEvent) => {
         if (mode === "dragging" && draggingTouch != null) {
             const touches = ev.changedTouches;
@@ -264,12 +348,6 @@ const GameApp: React.FC<{}> = observer((_props) => {
 
     return <>
         {mode !== "drag" && <Cards coords={[...game.cardPile.positions]} onClick={cardClick} />}
-        <Players
-            onClick={drawnCard == null ? undefined : (i) => {
-                game.giveCard(i);
-                setMode("game");
-            }}
-            />
         <div><button
             onClick={() => setMode((m) => m === "drag" ? "game" : "drag")}
             disabled={!(mode === "drag" && game.cardPile.positions.length > 0 || mode === "game")}
@@ -278,12 +356,24 @@ const GameApp: React.FC<{}> = observer((_props) => {
             onClick={() => setMode((m) => m === "game" ? "placePlayer" : "game")}
             disabled={!(mode === "game" || mode === "placePlayer")}
         >{mode === "placePlayer" ? "Click the new player's location!" : "Add player"}</button></div>
-        {drawnCard == null ? null : <div>
+        <UndoRedo />
+        {drawnCard == null ? null : <>
+        <div>
+            <button onClick={() => game.discardDrawnCard()}>Discard drawn card</button>
+        </div>
+        <div style={{position: 'relative'}}>
             {"Currently drawn card: "}
             <div style={{display: "inline-block", width: "100px", height: "140px"}}>
                 {cards[drawnCard]}
             </div>
-        </div>}
+        </div>
+        </>}
+        <Players
+            onClick={drawnCard == null ? undefined : (i) => {
+                game.giveCard(i);
+                setMode("game");
+            }}
+            />
     </>;
 });
 
@@ -310,9 +400,9 @@ const App: React.FC<{}> = (_props) => {
     }
     const root = rootRef.current;
     React.useEffect(() => {
-        onSnapshot(root, (snapshot) => {
+        return onSnapshot(root, (snapshot) => {
             localStorage.setItem("megaprugl", JSON.stringify(snapshot));
-        })
+        });
     }, [root]);
     return <Game.Provider value={root}>
         <GameApp />
