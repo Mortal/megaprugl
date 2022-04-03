@@ -20,8 +20,8 @@ export const cards = [
 </use>
 <path transform="translate(0,-10)rotate(45)scale(1.704)translate(-14,-14)" fill="white" stroke="none" d="M4,4h7v7h-7M5,5v5h5v-5M12,4h5v3h-1v2h1v2h-1v-2h-1v2h-1v-2h-1v2h-1v-2h1v-1h-1M13,5v1h2v1h1v-2M18,4h7v7h-7M19,5v5h5v-5M6,6h3v3h-3M20,6h3v3h-3M4,12h2v1h2v-1h3v1h-1v1h3v-1h2v-1h1v1h2v3h1v-4h1v1h1v-1h4v1h-1v1h1v1h-1v1h1v1h-2v1h-2v-1h2v-2h-2v1h-2v1h-3v1h3v2h1v-1h1v1h-1v2h-1v2h1v-1h1v-2h1v-1h1v-1h1v-1h1v2h-1v1h1v1h-2v1h-1v2h-6v-1h-1v1h-1v-1h-1v1h-1v-2h1v-2h-1v-2h1v-1h-1v-1h-2v-1h1v-1h-3v1h1v1h-1v-1h-3v1h-1v-3h2v-1h-2M8,13v1h1v-1M15,13v2h1v1h1v-2h-1v-1M21,13v1h2v-1M6,14v1h2v-1M13,14v1h-1v2h1v-1h2v-1h-1v-1M20,14v1h1v-1M23,14v1h1v-1M15,18v1h1v-1M4,18h7v7h-7M5,19v5h5v-5M13,19v2h1v1h1v-1h1v3h1v-3h2v-1h-1v-1h-1v1h-2v-1M6,20h3v3h-3M14,23v1h1v-1M24,23h1v2h-2v-1h1">
 </path>
-<text font-size="20" font-family="Bariol" fill="black" text-anchor="middle" y="100.4">www.me.uk</text>
-<text font-size="20" font-family="Bariol" fill="black" text-anchor="middle" y="120.4">/cards/</text>
+<text fontSize="20" fontFamily="Bariol" fill="black" textAnchor="middle" y="100.4">www.me.uk</text>
+<text fontSize="20" fontFamily="Bariol" fill="black" textAnchor="middle" y="120.4">/cards/</text>
 <use href="#VSA" height="32" width="32" x="-114.4" y="-156">
 </use>
 <use href="#SSA" fill="black" height="26.769" width="26.769" x="-111.784" y="-119">
