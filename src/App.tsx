@@ -46,16 +46,16 @@ const Cards: React.FC<{coords: (readonly [number, number])[], onClick: () => voi
     </>;
 }
 
-const getMouseXy = (ev: MouseEvent) => {
+const getMouseXy = (ev: MouseEvent|Touch) => {
     return [ev.clientX, ev.clientY] as const;
 };
 
 const useMouseMove = (pos: readonly [number, number], setPos: (p: readonly [number, number]) => void) => {
     const [x, y] = pos;
     const [[dx, dy], setD] = React.useState([0 as number, 0 as number] as const);
-    const [s, setS] = React.useState<null | readonly [number, number]>(null);
+    const [s, setS] = React.useState<null | {touch?: number, pos: readonly [number, number]}>(null);
     const onMouseDown = React.useCallback((ev: MouseEvent) => {
-        setS(getMouseXy(ev));
+        setS({pos: getMouseXy(ev)});
         ev.stopPropagation();
     }, []);
     const onMouseUp = React.useCallback((ev: MouseEvent) => {
@@ -66,11 +66,53 @@ const useMouseMove = (pos: readonly [number, number], setPos: (p: readonly [numb
     }, [x, y, dx, dy, s, setPos]);
     const onMouseMove = React.useCallback((ev: MouseEvent) => {
         if (s == null) return;
+        if (s.touch != null) return;
         const [xx, yy] = getMouseXy(ev);
-        const [sx, sy] = s;
+        const [sx, sy] = s.pos;
         setD([xx - sx, yy - sy]);
     }, [s]);
-    return [x + dx, y + dy, onMouseDown, onMouseMove, onMouseUp] as const;
+    const onTouchStart = React.useCallback((ev: TouchEvent) => {
+        const touches = ev.changedTouches;
+        setS({touch: touches[0].identifier, pos: getMouseXy(touches[0])});
+        // ev.preventDefault();
+        // ev.stopPropagation();
+    }, []);
+    const onTouchMove = React.useCallback((ev: TouchEvent) => {
+        if (s == null) return;
+        const {touch, pos} = s;
+        if (touch == null) return;
+        const touches = ev.changedTouches;
+        for (let i = 0; i < touches.length; ++i) {
+            if (touches[i].identifier === touch) {
+                const [xx, yy] = getMouseXy(touches[i]);
+                const [sx, sy] = s.pos;
+                setD([xx - sx, yy - sy]);
+                ev.preventDefault();
+                ev.stopPropagation();
+                return;
+            }
+        }
+    }, [s]);
+    const onTouchEnd = React.useCallback((ev: TouchEvent) => {
+        if (s == null) return;
+        const {touch, pos} = s;
+        if (touch == null) return;
+        const touches = ev.changedTouches;
+        for (let i = 0; i < touches.length; ++i) {
+            console.log({ident: touches[i].identifier, touch});
+            if (touches[i].identifier === touch) {
+                setS(null);
+                setD([0, 0]);
+                if (dx !== 0 || dy !== 0) {
+                    setPos([x + dx, y + dy]);
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                }
+                return;
+            }
+        }
+    }, [x, y, dx, dy, s, setPos]);
+    return [x + dx, y + dy, onMouseDown, onMouseMove, onMouseUp, onTouchStart, onTouchMove, onTouchEnd] as const;
 };
 
 const DirtyInput: React.FC<{value: string, onChange: (v: string) => void}> = ({value, onChange}) => {
@@ -88,12 +130,22 @@ const Player: React.FC<{
     index: number,
     onClick?: (i: number) => void,
 }> = observer(({value: player, onClick, index}) => {
-    const [x, y, onMouseDown, onMouseMove, onMouseUp] = useMouseMove(player.position, (p) => player.move(p));
+    const [x, y, onMouseDown, onMouseMove, onMouseUp, onTouchStart, onTouchMove, onTouchEnd] = useMouseMove(player.position, (p) => player.move(p));
     useWindowEventListener("mousemove", onMouseMove);
     useWindowEventListener("mouseup", onMouseUp);
+    useWindowEventListener("touchmove", onTouchMove, {passive: false});
+    useWindowEventListener("touchend", onTouchEnd, {passive: false});
     const [confirm, setConfirm] = React.useState(false);
     React.useEffect(() => {
         if (onClick != null) setConfirm(false);
+    }, [onClick]);
+    const divRef = React.useRef<HTMLDivElement | null>(null);
+    React.useLayoutEffect(() => {
+        const d = divRef.current;
+        if (d == null) return;
+        if (onClick != null) return;
+        d.addEventListener("touchstart", onTouchStart, {passive: false});
+        return () => d.removeEventListener("touchstart", onTouchStart);
     }, [onClick]);
     return <div
         style={{
@@ -105,6 +157,7 @@ const Player: React.FC<{
             border: "1px solid black",
             background: "white",
         }}
+        ref={(d) => {divRef.current = d;}}
         onMouseDown={onClick == null ? (e) => onMouseDown(e.nativeEvent) : undefined}
         onClick={onClick == null ? undefined : () => onClick(index)}
     >
@@ -132,11 +185,13 @@ const Players: React.FC<{
 const GameApp: React.FC<{}> = observer((_props) => {
     const game = Game.useMst().game;
     const [mode, setMode] = React.useState("game");
+    const [draggingTouch, setDraggingTouch] = React.useState<number | null>(null);
     const isDragging = mode === "drag" || mode === "dragging" || (mode === "game" && game.cardPile.positions.length === 0);
     useWindowEventListener("mousedown", React.useCallback((ev: MouseEvent) => {
         if (ev.target instanceof Element && (ev.target.tagName === "BUTTON" || ev.target.tagName === "INPUT")) return;
         if (isDragging) {
             setMode("dragging");
+            setDraggingTouch(null);
             game.restartPile(getMouseXy(ev));
             ev.preventDefault();
             ev.stopPropagation();
@@ -149,16 +204,54 @@ const GameApp: React.FC<{}> = observer((_props) => {
         }
     }, [mode]));
     useWindowEventListener("mousemove", React.useCallback((ev: MouseEvent) => {
-        if (mode === "dragging") {
+        if (mode === "dragging" && draggingTouch == null) {
             game.pushPile(getMouseXy(ev));
         }
-    }, [mode]));
+    }, [mode, draggingTouch == null]));
     useWindowEventListener("mouseup", React.useCallback((ev: MouseEvent) => {
-        if (mode === "dragging") {
+        if (mode === "dragging" && draggingTouch == null) {
             game.pushPile(getMouseXy(ev));
             setMode("game");
         }
+    }, [mode, draggingTouch == null]));
+    useWindowEventListener("touchstart", React.useCallback((ev: TouchEvent) => {
+        if (ev.target instanceof Element && (ev.target.tagName === "BUTTON" || ev.target.tagName === "INPUT")) return;
+        if (isDragging) {
+            setMode("dragging");
+            setDraggingTouch(ev.touches[0].identifier);
+            game.restartPile(getMouseXy(ev.touches[0]));
+            ev.preventDefault();
+            ev.stopPropagation();
+        }
     }, [mode]));
+    useWindowEventListener("touchmove", React.useCallback((ev: TouchEvent) => {
+        if (mode === "dragging" && draggingTouch != null) {
+            const touches = ev.changedTouches;
+            for (let i = 0; i < touches.length; ++i) {
+                if (touches[i].identifier === draggingTouch) {
+                    game.pushPile(getMouseXy(touches[i]));
+                    ev.stopPropagation();
+                    ev.preventDefault();
+                    return;
+                }
+            }
+        }
+    }, [mode, draggingTouch]));
+    useWindowEventListener("touchend", React.useCallback((ev: TouchEvent) => {
+        if (mode === "dragging" && draggingTouch != null) {
+            const touches = ev.changedTouches;
+            for (let i = 0; i < touches.length; ++i) {
+                if (touches[i].identifier === draggingTouch) {
+                    game.pushPile(getMouseXy(touches[i]));
+                    setDraggingTouch(null);
+                    setMode("game");
+                    ev.stopPropagation();
+                    ev.preventDefault();
+                    return;
+                }
+            }
+        }
+    }, [mode, draggingTouch]));
     const drawCard = React.useCallback(() => {
         game.drawCard((Math.random() * 52)|0);
     }, []);

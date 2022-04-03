@@ -1,1 +1,5 @@
 body { background: #eee; }
+
+@media (hover: none) {
+    button {height: 3em}
+}
