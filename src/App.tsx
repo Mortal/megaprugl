@@ -65,7 +65,7 @@ const Cards: React.FC<{coords: (readonly [number, number])[], onClick: () => voi
             display: "flex",
             width: `${w}px`,
             height: `${w*1.5}px`,
-            rotate: `${dir}deg`,
+            transform: `rotate(${dir}deg)`,
         }} onClick={onClick} key={i}>
             {cards[55]}
         </div>)}
