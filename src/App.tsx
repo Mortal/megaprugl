@@ -3,7 +3,8 @@ import * as Game from './Game';
 import './App.css';
 import { onSnapshot, applySnapshot, onPatch, applyPatch } from "mobx-state-tree";
 import { observer } from "mobx-react-lite";
-import { cards } from './Cards';
+
+let cards: JSX.Element[] = [];
 
 const useEventListener = <K extends keyof HTMLElementEventMap>(
     target: HTMLElement, event: K,
@@ -22,10 +23,6 @@ const useWindowEventListener = <K extends keyof WindowEventMap>(
     options?: boolean | AddEventListenerOptions
 ) => {
     useEventListener(window as unknown as any, event as unknown as any, cb as unknown as any, options);
-};
-
-const Card: React.FC<{value: number}> = ({value}) => {
-    return <div style={{display: "inline-flex", width: "100px"}}>{cards[value]}</div>
 };
 
 const Cards: React.FC<{
@@ -479,8 +476,13 @@ const App: React.FC<{}> = (_props) => {
             localStorage.setItem("megaprugl", JSON.stringify(snapshot));
         });
     }, [root]);
+    const [cardsLoaded, setCardsLoaded] = React.useState(false);
+    React.useEffect(async () => {
+        cards = (await import("./Cards")).cards;
+        setCardsLoaded(true)
+    }, []);
     return <Game.Provider value={root}>
-        <GameApp />
+        {cardsLoaded ? <GameApp /> : null}
     </Game.Provider>;
 };
 
