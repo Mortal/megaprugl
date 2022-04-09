@@ -326,16 +326,20 @@ const usePointerEvents = (s: {
 const GameApp: React.FC<{}> = observer((_props) => {
     const game = Game.useMst().game;
     const [mode, setMode] = React.useState("game");
-    const isStartDrag = mode === "drag" || mode === "dragging" || (mode === "game" && game.cardPile.positions.length === 0);
+    const isStartDrag = mode === "drag" || (mode === "game" && game.cardPile.positions.length === 0);
     const isDragging = usePointerEvents(
         {
             canStart: isStartDrag,
             start: React.useCallback((ev: MouseEvent | Touch) => {
                 game.restartPile(getMouseXy(ev));
+                setMode((m) => m === "drag" ? "dragging" : m);
             }, [game]),
             move: React.useCallback((ev: MouseEvent | Touch) => {
                 game.pushPile(getMouseXy(ev));
             }, [game]),
+            end: React.useCallback(() => {
+                setMode((m) => m === "dragging" ? "game" : m)
+            }, []),
         }
     ) || isStartDrag;
     usePointerEvents(
