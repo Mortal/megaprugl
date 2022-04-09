@@ -3,3 +3,14 @@ body { background: #eee; }
 @media (hover: none) {
     button {height: 3em}
 }
+
+.tool {
+    border: 1px solid black;
+    background: #ccc;
+    margin: 5px;
+    padding: 5px;
+}
+
+.tool.selected {
+    background: #3f3;
+}
